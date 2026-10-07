@@ -271,17 +271,24 @@ How it is wired in compile-php: `index.php` keeps each entry as written in `$tab
   - Photo / file processing: Built-in `Img::webpImage` and `FileAct` for automatic multi-size thumbnailing.
   - Routes: `php/Routes/pre/api/<Role>.php` compiled to `Routes/web.php` via `php php/set.php`.
 
-### D. .NET / C# (`dotnetset.php`)
-- Target directory: `dotnet/`
-- Generates C# class models in `dotnet/Models/<Name>.cs` and ASP.NET Core `[ApiController]` controllers in `dotnet/Controllers/<Name>Controller.cs`.
+> **D, E and F below are unreachable dead code as of 0.2.25.** The classes exist in
+> `src/Class/`, but nothing ever instantiates them: `setup.php` exposes no
+> `dotnet_set()` / `golang_set()` / `spring_set()`, and `config()` branches only on
+> `deno`, `php`, `python`, `angular`, `solidjs` and `vuets`. Running `php setup.php`
+> produces **no** .NET, Go or Spring files. The descriptions record what the classes
+> would emit if they were wired up — do not promise these outputs to anyone.
 
-### E. Go / Gin (`golangset.php`)
-- Target directory: `go/`
-- Generates Go structs with `json:"..."` tags in `go/models/<name>.go` and Gin controller handlers in `go/controllers/<name>_controller.go`.
+### D. .NET / C# (`dotnetset.php`) — not wired up
+- Intended target directory: `dotnet/`
+- Would generate C# class models in `dotnet/Models/<Name>.cs` and ASP.NET Core `[ApiController]` controllers in `dotnet/Controllers/<Name>Controller.cs`.
 
-### F. Java / Spring Boot (`javaspringset.php`)
-- Target directory: `spring/`
-- Generates JPA entities (`@Entity`, `@Table`, Lombok `@Data`) in `spring/.../model/<Name>.java`, Spring Data JPA repositories in `repository/<Name>Repository.java`, and `@RestController` in `controller/<Name>Controller.java`.
+### E. Go / Gin (`golangset.php`) — not wired up
+- Intended target directory: `go/`
+- Would generate Go structs with `json:"..."` tags in `go/models/<name>.go` and Gin controller handlers in `go/controllers/<name>_controller.go`.
+
+### F. Java / Spring Boot (`javaspringset.php`) — not wired up
+- Intended target directory: `spring/`
+- Would generate JPA entities (`@Entity`, `@Table`, Lombok `@Data`) in `spring/.../model/<Name>.java`, Spring Data JPA repositories in `repository/<Name>Repository.java`, and `@RestController` in `controller/<Name>Controller.java`.
 
 ---
 
@@ -316,7 +323,8 @@ How it is wired in compile-php: `index.php` keeps each entry as written in `$tab
   - `Service/run.service.ts`: Initialization service with timeouts.
   - Patches `angular.json` with custom assets and output paths.
 
-### C. Vue (`vueset.php`)
+### C. Vue (`vueset.php`, called via `vuejs_set()`)
+- Enabled by `"vuets"` in `config.json`'s `front-end` list. Unlike D/E/F this one *is* reachable.
 - Target directory: `vuets/src/shared/`
 - Architecture:
   - `Store/Model/<Name>.js`: Pinia store (`defineStore`) with getters, mutation actions (`addItem`, `removeItem`, `editItem`, `upsertItem`), and HMR support (`import.meta.hot`).
@@ -378,3 +386,23 @@ How it is wired in compile-php: `index.php` keeps each entry as written in `$tab
 4. **Ownership & Security**:
    - Every user-facing table must say who owns its rows. **Deno:** write the `islogin` (and each role) entry as an object with `owner` or `under` (2.A2); a plain list is NOT scoped and returns every row. **Python:** `app/core/ownership.py` (default `user_id`, `OWNERSHIP`, `PARENTS`, `SHARED_READ`).
    - Python `/islogin/` endpoints enforce ownership automatically; Deno ones only when the schema says `owner`/`under`. Admin-only endpoints belong strictly in `isuper`.
+
+
+---
+
+## 9. Known issues (check before relying on a feature)
+
+Verified against compile-php `0.2.25-5-g4d25b63`. Per-platform detail lives in the
+reference files; this table is the short list to check before promising a feature.
+
+| Where | Issue | Status |
+|---|---|---|
+| `the_lib` `Auth::profile()` / `profileupdate()` | Filter on `user_id`, a column `users` does not have. `Model::where()` silently drops unknown keys, so GET returns the **first user** and POST updates **every user**. | **Open, security.** Fix is `where(["id" => [$_SESSION['user_id']]])`, allowing only name/phone/email. Ask before editing `the_lib`. See `references/php-backend.md`. |
+| `the_lib` `Auth::login` | A wrong password falls through to 404 "User Not Found" — the `Response::why(...)` result isn't returned. | Open. Keep the 404 if you fix it; the-angular treats any 2xx as success. |
+| `Model::where()` (PHP + Deno) | Unknown column keys are dropped, and `update()` with no where updates every row. | By design. Always use real column names and array values: `["id" => [$id]]`. |
+| PHP template <= 0.2.24 | `"ilogin" => true` typo left `/api/env` and `/api/isuper` **unprotected**; `/reset` routed to a missing method. | Fixed in later templates (login/register moved to `Inotlogin.php`). Existing projects need a hand fix. |
+| `dotnetset` / `golangset` / `javaspringset` | Classes exist in `src/Class/` but are never instantiated — no `setup.php` method, not in `config()`. **They emit nothing.** | Open. See the note in section 4. |
+| `php_set()` | Rewrites `php/env.php` from `config.json` on every run, discarding hand edits. intaxing23's `env.php` has `samesite "None"` while its config says `"Strict"`. | Keep `config.json` in sync before regenerating. |
+| Deno `the@0.0.2` | `SessionRoles` grants every user every role; update verb is POST; no 404. | Fixed in 0.1.x. the_billing works around it with `withRealRoles()`. |
+| the_billing | Hand-edited `Routes/Islogin.ts` and `Isuper.ts` are overwritten by `deno_set()`. Its Deno routes have no `/api` prefix (nginx strips it). | Save those files before regenerating. |
+| Python ownership | A table with no `OWNERSHIP` rule and no `user_id` is unscoped for `/islogin/*` — any signed-in user reads and writes every row. | By design (shared data). Add a rule, or grant `islogin` only `r`/`a`. |
