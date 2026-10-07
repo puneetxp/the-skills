@@ -65,9 +65,31 @@ Generated files:
 - `App/Routes/<Role>.ts` for custom roles.
 - Controllers in `App/Controller/<Role>/<Name>Controller.ts`.
 
-**These files are rewritten on every `deno_set()`.** the_billing has hand-edited `Islogin.ts` (nested book routes) and `Isuper.ts`, so save them before you regenerate. Nested book routes can now come from the schema instead (`"under": "book"`, section 6).
+**These files are rewritten on every `deno_set()`. Never hand-edit them.** Declare access in the schema (`crud`, with `owner`/`under`/`path`, section 6); put routes that are not CRUD on a table in `App/Routes/index.ts`, which is a template copied once and never rewritten. Add new role route arrays there too.
 
-`App/Routes/<Role>.ts` is generated for every role, but `App/Routes/index.ts` is a template copied once: add new role route arrays there by hand.
+Controllers are rewritten as well, unless `config.json` has `"table": { "<model>": true }`: then that model's existing controller files are kept (all audiences). Keep the schema letters in step with the methods of a kept class. the_billing keeps account, book, book_asset, book_entry, book_stock, brand, category, client, invoice, journal, journal_detail, product, product_link, server, service, unit and user (list mirrored in its committed `exampleconfig.json`).
+
+```ts
+// App/Routes/index.ts (the_billing): non-CRUD routes beside the generated ones
+const custom: _Routes = [{
+    path: "islogin",
+    child: [
+        { path: "/business_type", group: { "GET": [{ handler: IsloginBusinessTypeController.all }] } },
+        { path: "/book/:book_id/template", child: [
+            { path: "/sales", handler: IsloginAccountController.salestemplate },
+            { path: "/cabs", handler: IsloginAccountController.cabstemplate },
+        ] },
+    ],
+}];
+// route_pre: { islogin: true, child: [...islogin, ...custom, ...isuper, ...manager] }
+```
+
+**Check after regenerating:** list every compiled route and diff it against the previous build (and grep the frontend's `/api/...` URLs against it):
+```ts
+// deno run -A --unstable-kv list.ts file://$PWD/App/Routes/index.ts
+const { routes } = await import(Deno.args[0]);
+for (const [m, list] of Object.entries(routes)) for (const r of list as any[]) console.log(m, r.pattern?.pathname, r.handler?.name ?? "NO-HANDLER");
+```
 
 Generated `delete` handlers soft-delete (`update({deleted_at})`) only when the model has `additional: ["delete"]`, and use `Model.delete` otherwise. compile-php 0.2.24 and earlier always soft-deleted.
 
@@ -143,12 +165,14 @@ export async function ownedParent(session, param, parent, key, ownerColumn): Pro
   return id;
 }
 ```
-- Calls models as factories (`Book$()`, `Client$()`), which is what the current generator writes; `where().first()` exists in 0.0.2 and 0.1.x. Apps whose models are still shared instances (`export const Book$ = new Standard()`, as in the_billing today) must regenerate their models first, or keep the hand-written pattern below.
+- Calls models as factories (`Book$()`, `Client$()`), which is what the current generator writes; `where().first()` exists in 0.0.2 and 0.1.x. Relation callbacks are generated as `() => Book$()` (an instance), which both runtimes accept.
+- the_billing uses this since 2026-10-07: client, invoice, account, journal, journal_detail, book_detail, order, book_asset (`path: "asset"`), book_stock (`path: "stock"`) and book_entry (`path: "entry"`) are `under: "book"`; book, server and subscription have `owner: "user_id"`.
+- Rename the URL segment with `"path"`: `{ "can": ["c","d","a"], "under": "book", "path": "asset" }` → `/islogin/book/:book_id/asset`.
 - `owner` controllers filter `WHERE <owner> = session.Login.id` and set it on create.
 - A role uses its own owner: `"roles": { "executive": { "under": "book" } }` checks `book.json` `"roles": { "executive": { "owner": "executive_id" } }`.
 - Only generated for `param: "URLPatternResult"`.
 
-### Hand-written per-tenant pattern (the_billing on 0.0.2)
+### Hand-written per-tenant pattern (inside kept controllers)
 ```ts
 export async function ownedBook(session: Session, param: URLPatternResult): Promise<number | Response> {
   const book_id = Number(param.pathname.groups.book_id);

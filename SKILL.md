@@ -111,12 +111,14 @@ A list says **what** an audience can do. It does not say **which rows**: a list-
 | `["r","a"]` | all rows (unchanged) | `/<audience>/<model>` | none |
 | `{ "can": [...], "owner": "user_id" }` | row is mine when `<owner>` = my login id | `/<audience>/<model>` | `WHERE user_id = Login.id`; `create` sets it |
 | `{ "can": [...], "under": "book" }` | row is mine when its parent is mine | `/<audience>/book/:book_id/<model>` | `ownedParent()` check, then `WHERE book_id = :book_id`; `create`/`update`/`upsert` set it |
+| `{ "can": [...], "under": "book", "path": "asset" }` | same, served at another URL segment | `/<audience>/book/:book_id/asset` | as above (`path` works with `owner` and plain objects too) |
 
 Rules (no defaults, nothing guessed):
 - `under: "book"` means model `Book$`, URL param and column `book_id` (the same `<name>_id` rule as relations).
 - The parent's owner column is read from the **parent's entry for the same audience**: `client.json` `"islogin": { "under": "book" }` uses `book.json` `"islogin": { "owner": "user_id" }`; `"roles": { "executive": { "under": "book" } }` uses `book.json` `"roles": { "executive": { "owner": "executive_id" } }`. One table can have a different owner per audience.
 - Generation **stops** if the parent has no `owner` for that audience, if the parent schema does not exist, or if `public`/`ipublic` uses `owner`/`under`.
 - `owner` is one column, so one person per row per audience. Many people per row (a manager assigned to many clients) needs a link table; not supported yet.
+- Public access is the key `"public"`. The Deno generator does not read `"ipublic"`; an `ipublic` entry generates nothing for Deno.
 
 ```json
 // book.json
@@ -132,6 +134,22 @@ Rules (no defaults, nothing guessed):
   "roles":   { "executive": { "can": ["r","a","w"], "under": "book" } }
 }
 ```
+
+### A3. Hand-written code next to generated code (Deno)
+`php setup.php` rewrites every generated file, every run. Three rules keep custom work safe (compile-php 4d25b63+):
+
+| What | Where it lives | Generator |
+|---|---|---|
+| Controller with real logic (invoice numbering, journal balancing, validation) | its normal file `App/Controller/<Role>/<Name>Controller.ts` | skipped when `config.json` `"table": { "<name>": true }`; applies to every audience of that model |
+| Route that is not CRUD on a table (`/book/:book_id/template/sales`, `/business_type`) | `App/Routes/index.ts`, in a `custom` route array next to `...islogin` | never written (template copied once) |
+| Access to a table (which audience, which letters, which rows, which URL) | the model JSON `crud` block | writes `App/Routes/Islogin.ts`, `Isuper.ts`, `Ipublic.ts`, `<Role>.ts` |
+
+- **Never hand-edit the generated route files**; the next run erases the edit. Declare it in the schema, or put it in `Routes/index.ts`.
+- A kept controller must have a method for every letter the schema grants (`a`→`all`, `r`→`show`, `c`→`store`, `u`→`update`, `d`→`delete`, `w`→`where`, `p`→`upsert`), or the route has no handler. Match the letters to the class.
+- A kept file can re-export another class under the generated name: `export { IsloginBookAssetController as IsloginBook_assetController } from "./BookHoldingController.ts";`
+- `config.json` is usually gitignored (DB credentials), so mirror the keep-list in a committed `exampleconfig.json`, or a fresh clone regenerates over the custom controllers.
+- **Models are factories**: `export const Client$ = () => new Standard()`, and relation callbacks are `() => Book$()`. Hand-written code calls `Client$().where(...)`, never `Client$.where(...)`. Each call gets its own query state, which fixes the shared-builder bug (filters from one request leaking into another) on the_deno 0.0.2.
+- Generated `all()` passes `param` (`Client$().all(param)`), which the_deno 0.1.x uses; on 0.0.2 it is a type-only mismatch (`TS2554`), ignored at runtime.
 
 How it is wired in compile-php: `index.php` keeps each entry as written in `$table['access']` and reduces `$table['crud']` to letters, so every other generator (PHP, Python, Angular, Vue, .NET, Go, Spring) reads `crud` exactly as before and ignores `owner`/`under`. `denoset.php` reads `access`; `solidset.php` reads `access.islogin.under`. Python keeps its own rules in `app/core/ownership.py`.
 
@@ -242,7 +260,8 @@ How it is wired in compile-php: `index.php` keeps each entry as written in `$tab
   - `App/controller/<Role>/<Name>Controller.ts`: Static CRUD methods (`all`, `where`, `show`, `store`, `update`, `upsert`, `delete`).
   - Soft delete: Sets `deleted_at: new Date()` when model specifies `additional: ["delete"]`; exposes `perma_delete` for `isuper`.
   - Routing: `App/routes/<Role>.ts` exporting route arrays with roles. Supports `param: "URLPatternResult"` or `param: "string[]"`.
-  - Row scope (2.A2): `owner` / `under` entries get a scoped controller (URLPatternResult only); `under` children are nested at `/<parent>/:<parent>_id/` inside the parent's route. The shared check `ownedParent()` lives in `App/scope.ts` (template, copied once).
+  - Row scope (2.A2): `owner` / `under` entries get a scoped controller (URLPatternResult only); `under` children are nested at `/<parent>/:<parent>_id/` inside the parent's route (`path` renames the segment). The shared check `ownedParent()` lives in `App/scope.ts` (template, copied once).
+  - Kept controllers, factory models, and where custom routes go: 2.A3.
 
 ### C. PHP (`phpset.php`)
 - Target directory: `php/App/`
@@ -341,7 +360,7 @@ How it is wired in compile-php: `index.php` keeps each entry as written in `$tab
 
 - **`postgresql: true`**: Switches generator to PostgreSQL dialect (`BIGSERIAL`, `JSONB`, `vector`, `TEXT[]`).
 - **`fresh: true`**: Drops and recreates database on migration.
-- **`table` map**: Controls code overwriting. Setting `"crop": false` or `"crop": true` protects custom controller implementations from being overwritten. To force regeneration of a controller, delete its key from `table`.
+- **`table` map**: `"crop": true` = hand-written: the Deno generator never overwrites that model's existing controllers (all audiences). `false` or a missing key = generated, rewritten every run. `setup->write()` adds `false` for every new table. See 2.A3.
 
 ---
 
