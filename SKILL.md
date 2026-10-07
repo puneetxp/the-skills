@@ -28,13 +28,18 @@ A schema-first framework family created by Puneet Sharma (`puneetxp`). You descr
 | `the-angular` | Angular UI library | npm `the-angular` 0.0.13, Angular 21. Active. |
 | `the-angular-material` | Angular 16 predecessor | Legacy. |
 | `the_web_component` | Vanilla custom elements (`<editable-list>`, `<wysiwyg-bs>`) | Prototype. |
-| `the_dotnet` / `the_dotnet_api` | .NET 10 runtime port and sample API | Supported via `dotnetset.php`. |
-| `the_go` | Go/Gin helper skeletons | Supported via `golangset.php`. |
-| `the_spring` | Java Spring Boot helper skeletons | Supported via `javaspringset.php`. |
+| `the_dotnet` / `the_dotnet_api` | .NET 10 runtime port and sample API | **Not generated.** `dotnetset.php` exists but is never called (section 4). |
+| `the_go` | Go/Gin helper skeletons | **Not generated.** `golangset.php` exists but is never called (section 4). |
+| `the_spring` | Java Spring Boot helper skeletons | **Not generated.** `javaspringset.php` exists but is never called (section 4). |
 | `the_billing` | INTAX GST billing app (Deno + SolidJS + MySQL) | The reference Deno app at `/Users/waseemakram/Documents/the_billing`. |
 | `intaxing23` | intaxing.in production app (PHP + Angular + MySQL) | The reference PHP app. |
 | `apac-genaiacademy-c2` | Rural farming platform (Python/FastAPI + SolidJS + PostgreSQL), at `/Users/waseemakram/Documents/apac-genaiacademy-c2` | The gold-standard Python/FastAPI reference app, and source of `python/app/core`. |
 | `the_doc` | Hugo/Doks documentation site | `content/en/docs/**` |
+| `skills` | **This skill.** Clone of `puneetxp/the-skills`; `~/.claude/skills/the-framework` symlinks here, and intaxing23 tracks it as a submodule. | Active. Edit here, then commit and push. |
+| `compiley-php` | Older snapshot of the generator, no git | Ignore it; use `compile-php`. |
+| `the` | 2022 start pack | Historical. |
+| `thesolidmarket` | Solid demo app | Historical. |
+| `prompts`, `references` | Loose notes next to the clones, not in any repo | Scratch. `skills/references/` is the tracked copy. |
 
 ---
 
